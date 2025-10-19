@@ -3,12 +3,32 @@ import { parse as parseToml, stringify as stringifyToml } from 'smol-toml'
 import { computed, type Ref, ref } from 'vue'
 
 /**
+ * 存储类型枚举
+ */
+export enum StorageType {
+  HTTP = 'http',
+  WEBDAV = 'webdav'
+}
+
+/**
  * 服务器配置接口
  */
 export interface ServerConfig {
   url: string
   username: string
   password: string
+  storageType: StorageType
+  webdavConfig?: WebDAVConfig
+}
+
+/**
+ * WebDAV 配置接口
+ */
+export interface WebDAVConfig {
+  host_url: string
+  username: string
+  password: string
+  destination_dir: string
 }
 
 /**
@@ -31,6 +51,23 @@ export const DEFAULT_CONFIG: ServerConfig = {
   url: '',
   username: '',
   password: '',
+  storageType: StorageType.HTTP,
+  webdavConfig: {
+    host_url: '',
+    username: '',
+    password: '',
+    destination_dir: '/clipboard-sync'
+  }
+}
+
+/**
+ * 默认 WebDAV 配置
+ */
+export const DEFAULT_WEBDAV_CONFIG: WebDAVConfig = {
+  host_url: '',
+  username: '',
+  password: '',
+  destination_dir: '/clipboard-sync'
 }
 
 /**
@@ -126,6 +163,106 @@ export function createFileDownloadUrl(serverConfig: Ref<ServerConfig>, filename:
 }
 
 /**
+ * WebDAV 客户端类
+ */
+export class WebDAVClient {
+  private config: WebDAVConfig
+
+  constructor(config: WebDAVConfig) {
+    this.config = config
+  }
+
+  /**
+   * 测试 WebDAV 连接
+   */
+  async testConnection(): Promise<TestResult> {
+    try {
+      const { webdav_test_connection } = await import('@tauri-apps/api/core')
+      const success = await webdav_test_connection(this.config)
+      return {
+        success,
+        message: success ? 'WebDAV 连接测试成功' : 'WebDAV 连接测试失败'
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: `WebDAV 连接测试失败: ${error}`
+      }
+    }
+  }
+
+  /**
+   * 上传剪贴板数据到 WebDAV
+   */
+  async uploadClipboardData(data: Uint8Array): Promise<TestResult> {
+    try {
+      const { webdav_upload_clipboard } = await import('@tauri-apps/api/core')
+      await webdav_upload_clipboard(this.config, Array.from(data))
+      return {
+        success: true,
+        message: '剪贴板数据已上传到 WebDAV'
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: `上传到 WebDAV 失败: ${error}`
+      }
+    }
+  }
+
+  /**
+   * 从 WebDAV 下载剪贴板数据
+   */
+  async downloadClipboardData(): Promise<{ success: boolean; data?: Uint8Array; message: string }> {
+    try {
+      const { webdav_download_clipboard } = await import('@tauri-apps/api/core')
+      const result = await webdav_download_clipboard(this.config)
+
+      if (result) {
+        return {
+          success: true,
+          data: new Uint8Array(result),
+          message: '从 WebDAV 下载剪贴板数据成功'
+        }
+      } else {
+        return {
+          success: false,
+          message: 'WebDAV 上没有找到剪贴板数据文件'
+        }
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: `从 WebDAV 下载失败: ${error}`
+      }
+    }
+  }
+
+  /**
+   * 更新 WebDAV 配置
+   */
+  updateConfig(config: Partial<WebDAVConfig>): void {
+    this.config = { ...this.config, ...config }
+  }
+
+  /**
+   * 获取当前配置
+   */
+  getConfig(): WebDAVConfig {
+    return { ...this.config }
+  }
+}
+
+/**
+ * 创建 WebDAV 客户端实例
+ * @param config WebDAV 配置
+ * @returns WebDAV 客户端实例
+ */
+export function createWebDAVClient(config: WebDAVConfig): WebDAVClient {
+  return new WebDAVClient(config)
+}
+
+/**
  * 剪贴板服务 Composable
  * 提供完整的配置管理和 URL 计算功能
  * @param initialConfig 初始配置（可选）
@@ -141,6 +278,14 @@ export function useClipboardService(initialConfig?: Partial<ServerConfig>) {
   // 创建完整文件 URL 的计算属性
   const fullFileUrl = useFullFileUrl(serverConfig)
 
+  // 创建 WebDAV 客户端实例
+  const webdavClient = computed(() => {
+    if (serverConfig.value.webdavConfig) {
+      return createWebDAVClient(serverConfig.value.webdavConfig)
+    }
+    return null
+  })
+
   // 加载配置的包装函数
   const loadServerConfig = async () => {
     await loadConfig(serverConfig)
@@ -151,13 +296,46 @@ export function useClipboardService(initialConfig?: Partial<ServerConfig>) {
     await saveConfig(serverConfig)
   }
 
+  // 切换存储类型
+  const switchStorageType = async (type: StorageType) => {
+    serverConfig.value.storageType = type
+    await saveServerConfig()
+  }
+
+  // 更新 WebDAV 配置
+  const updateWebDAVConfig = async (config: Partial<WebDAVConfig>) => {
+    if (serverConfig.value.webdavConfig) {
+      serverConfig.value.webdavConfig = { ...serverConfig.value.webdavConfig, ...config }
+      await saveServerConfig()
+    }
+  }
+
+  // 测试当前存储配置
+  const testCurrentStorage = async (): Promise<TestResult> => {
+    if (serverConfig.value.storageType === StorageType.WEBDAV && webdavClient.value) {
+      return await webdavClient.value.testConnection()
+    }
+
+    // 这里可以添加 HTTP 测试逻辑
+    return {
+      success: false,
+      message: 'HTTP 存储测试暂未实现'
+    }
+  }
+
   return {
     serverConfig,
     fullFileUrl,
+    webdavClient,
+    storageType: computed(() => serverConfig.value.storageType),
     loadConfig: loadServerConfig,
     saveConfig: saveServerConfig,
+    switchStorageType,
+    updateWebDAVConfig,
+    testCurrentStorage,
     stringToUnicode,
     unicodeToString,
     createFileDownloadUrl: (filename: string) => createFileDownloadUrl(serverConfig, filename),
+    StorageType,
   }
 }

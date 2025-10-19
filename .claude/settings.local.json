@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//d/prototype/**)",
+      "Bash(cargo check:*)",
+      "Bash(npm run build)",
+      "Bash(cargo tauri build:*)",
+      "Bash(npm run tauri:*)",
+      "Bash(npm run)",
+      "Bash(npx @tauri-apps/cli@latest:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
