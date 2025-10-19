@@ -101,7 +101,7 @@
       <div
         v-if="statusMessage"
         :class="[
-          'p-3 rounded-md text-sm',
+          'p-3 rounded-md text-sm whitespace-pre-line',
           statusMessage.type === 'success'
             ? 'bg-green-50 text-green-800 border border-green-200'
             : 'bg-red-50 text-red-800 border border-red-200'
@@ -112,13 +112,27 @@
 
       <!-- 使用提示 -->
       <div class="bg-blue-50 border border-blue-200 rounded-md p-4">
-        <h3 class="text-sm font-semibold text-blue-800 mb-2">使用提示</h3>
-        <ul class="text-xs text-blue-700 space-y-1">
-          <li>• 支持常见的 WebDAV 服务器，如 Nextcloud、ownCloud 等</li>
-          <li>• 确保服务器 URL 指向正确的 WebDAV 端点</li>
-          <li>• 建议使用专门的应用专用密码而非主账户密码</li>
-          <li>• 确保指定的目录存在或服务器允许自动创建目录</li>
-        </ul>
+        <h3 class="text-sm font-semibold text-blue-800 mb-2">📋 使用提示</h3>
+        <div class="text-xs text-blue-700 space-y-2">
+          <div>
+            <strong>常见 WebDAV 服务器配置：</strong>
+            <ul class="ml-4 mt-1 space-y-1">
+              <li>• <strong>Nextcloud/ownCloud:</strong> https://your-domain.com/remote.php/dav/files/username/</li>
+              <li>• <strong>坚果云:</strong> https://dav.jianguoyun.com/dav/</li>
+              <li>• <strong>通用服务器:</strong> https://your-domain.com/webdav/ 或 /dav/</li>
+            </ul>
+          </div>
+          <div>
+            <strong>连接问题排查：</strong>
+            <ul class="ml-4 mt-1 space-y-1">
+              <li>• 确保 URL 以 / 结尾</li>
+              <li>• 检查用户名和密码是否正确</li>
+              <li>• 如果启用了两步验证，请使用应用专用密码</li>
+              <li>• 尝试使用 http:// 而不是 https:// 测试</li>
+              <li>• 确认 WebDAV 服务已启用</li>
+            </ul>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -171,18 +185,87 @@ const testConnection = async () => {
   statusMessage.value = null
 
   try {
-    const { createWebDAVClient } = await import('@/services/clipboard-service')
-    const client = createWebDAVClient(localConfig.value)
-    const result: TestResult = await client.testConnection()
+    console.log('开始测试 WebDAV 连接...', localConfig.value)
+
+    // 验证配置完整性
+    if (!localConfig.value.host_url.trim()) {
+      statusMessage.value = {
+        type: 'error',
+        text: '❌ 服务器 URL 不能为空'
+      }
+      return
+    }
+
+    if (!localConfig.value.username.trim()) {
+      statusMessage.value = {
+        type: 'error',
+        text: '❌ 用户名不能为空'
+      }
+      return
+    }
+
+    if (!localConfig.value.password.trim()) {
+      statusMessage.value = {
+        type: 'error',
+        text: '❌ 密码不能为空'
+      }
+      return
+    }
+
+    // 验证 URL 格式
+    try {
+      new URL(localConfig.value.host_url)
+    } catch {
+      statusMessage.value = {
+        type: 'error',
+        text: `❌ 服务器 URL 格式无效: ${localConfig.value.host_url}`
+      }
+      return
+    }
+
+    console.log('配置验证通过，开始调用 Tauri 命令...')
+
+    const { testWebDAVConnection } = await import('@/utils/webdav-test')
+    const result = await testWebDAVConnection(localConfig.value)
+
+    console.log('WebDAV 测试结果:', result)
 
     statusMessage.value = {
       type: result.success ? 'success' : 'error',
       text: result.message
     }
   } catch (error) {
+    console.error('WebDAV 连接测试异常:', error)
+
+    // 提供更详细的错误信息
+    let errorMessage = '❌ WebDAV 连接测试失败'
+
+    if (error instanceof Error) {
+      errorMessage += `: ${error.message}`
+
+      // 根据错误类型提供具体建议
+      if (error.message.includes('timeout')) {
+        errorMessage += '\n💡 建议: 检查网络连接，或服务器是否响应缓慢'
+      } else if (error.message.includes('401')) {
+        errorMessage += '\n💡 建议: 检查用户名和密码是否正确'
+      } else if (error.message.includes('404')) {
+        errorMessage += '\n💡 建议: 检查服务器 URL 是否正确，WebDAV 服务是否启用'
+      } else if (error.message.includes('SSL') || error.message.includes('certificate')) {
+        errorMessage += '\n💡 建议: 检查 SSL 证书，或尝试使用 http:// 而不是 https://'
+      } else if (error.message.includes('network') || error.message.includes('connection')) {
+        errorMessage += '\n💡 建议: 检查网络连接和服务器地址'
+      } else if (error.message.includes('Not found')) {
+        errorMessage += '\n💡 建议: 检查目标目录路径是否正确'
+      } else if (error.message.includes('Failed to fetch')) {
+        errorMessage += '\n💡 建议: 检查网络连接和服务器地址，可能是 CORS 或网络问题'
+      }
+    } else {
+      errorMessage += `: ${String(error)}`
+    }
+
     statusMessage.value = {
       type: 'error',
-      text: `连接测试失败: ${error}`
+      text: errorMessage
     }
   } finally {
     isTesting.value = false

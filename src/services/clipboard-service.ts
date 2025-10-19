@@ -177,16 +177,55 @@ export class WebDAVClient {
    */
   async testConnection(): Promise<TestResult> {
     try {
-      const { webdav_test_connection } = await import('@tauri-apps/api/core')
-      const success = await webdav_test_connection(this.config)
-      return {
-        success,
-        message: success ? 'WebDAV 连接测试成功' : 'WebDAV 连接测试失败'
+      console.log('WebDAV Client: 开始测试连接到', this.config.host_url)
+
+      const { invoke } = await import('@tauri-apps/api/core')
+      const success = await invoke('webdav_test_connection', { config: this.config })
+
+      console.log('WebDAV Client: 连接测试结果', success)
+
+      if (success) {
+        return {
+          success: true,
+          message: '✅ WebDAV 连接测试成功！服务器响应正常，可以同步剪贴板数据'
+        }
+      } else {
+        return {
+          success: false,
+          message: '❌ WebDAV 连接测试失败：服务器返回错误响应\n请检查以下项目：\n• 服务器 URL 是否正确\n• 用户名和密码是否正确\n• WebDAV 服务是否已启用\n• 网络连接是否正常'
+        }
       }
     } catch (error) {
+      console.error('WebDAV Client: 连接测试异常', error)
+
+      let errorMessage = '❌ WebDAV 连接测试失败'
+
+      if (error instanceof Error) {
+        errorMessage += `: ${error.message}`
+
+        // 根据错误类型提供具体建议
+        if (error.message.includes('Not found')) {
+          errorMessage += '\n🔍 问题分析：服务器返回 404 错误\n💡 解决方案：\n• 检查 WebDAV 服务器 URL 是否正确\n• 确认 WebDAV 服务已启用\n• 验证目标目录路径是否有效'
+        } else if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+          errorMessage += '\n🔍 问题分析：身份验证失败\n💡 解决方案：\n• 检查用户名和密码是否正确\n• 确认账户有 WebDAV 访问权限\n• 如果启用了 2FA，请使用应用专用密码'
+        } else if (error.message.includes('403') || error.message.includes('Forbidden')) {
+          errorMessage += '\n🔍 问题分析：访问被禁止\n💡 解决方案：\n• 检查用户权限设置\n• 确认 WebDAV 功能已启用\n• 联系管理员检查访问权限'
+        } else if (error.message.includes('timeout')) {
+          errorMessage += '\n🔍 问题分析：连接超时\n💡 解决方案：\n• 检查网络连接\n• 确认服务器地址是否正确\n• 服务器可能响应缓慢，请稍后重试'
+        } else if (error.message.includes('SSL') || error.message.includes('certificate') || error.message.includes('handshake')) {
+          errorMessage += '\n🔍 问题分析：SSL/TLS 证书问题\n💡 解决方案：\n• 检查服务器证书是否有效\n• 尝试使用 http:// 而不是 https://\n• 联系管理员解决证书问题'
+        } else if (error.message.includes('network') || error.message.includes('connection') || error.message.includes('ENOTFOUND')) {
+          errorMessage += '\n🔍 问题分析：网络连接问题\n💡 解决方案：\n• 检查网络连接\n• 验证服务器地址是否正确\n• 确认服务器是否在线'
+        } else if (error.message.includes('Failed to fetch')) {
+          errorMessage += '\n🔍 问题分析：无法获取响应\n💡 解决方案：\n• 检查网络连接\n• 验证服务器 URL 格式\n• 可能是 CORS 或防火墙问题'
+        }
+      } else {
+        errorMessage += `: ${String(error)}`
+      }
+
       return {
         success: false,
-        message: `WebDAV 连接测试失败: ${error}`
+        message: errorMessage
       }
     }
   }
@@ -196,8 +235,11 @@ export class WebDAVClient {
    */
   async uploadClipboardData(data: Uint8Array): Promise<TestResult> {
     try {
-      const { webdav_upload_clipboard } = await import('@tauri-apps/api/core')
-      await webdav_upload_clipboard(this.config, Array.from(data))
+      const { invoke } = await import('@tauri-apps/api/core')
+      await invoke('webdav_upload_clipboard', {
+        config: this.config,
+        data: Array.from(data)
+      })
       return {
         success: true,
         message: '剪贴板数据已上传到 WebDAV'
@@ -215,13 +257,13 @@ export class WebDAVClient {
    */
   async downloadClipboardData(): Promise<{ success: boolean; data?: Uint8Array; message: string }> {
     try {
-      const { webdav_download_clipboard } = await import('@tauri-apps/api/core')
-      const result = await webdav_download_clipboard(this.config)
+      const { invoke } = await import('@tauri-apps/api/core')
+      const result = await invoke('webdav_download_clipboard', { config: this.config })
 
       if (result) {
         return {
           success: true,
-          data: new Uint8Array(result),
+          data: new Uint8Array(result as number[]),
           message: '从 WebDAV 下载剪贴板数据成功'
         }
       } else {

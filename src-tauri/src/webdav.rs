@@ -81,25 +81,39 @@ impl WebDAVClient {
         let client = self.client.as_ref()
             .ok_or_else(|| WebDAVError::ConfigError("WebDAV client not initialized".to_string()))?;
 
+        println!("Testing WebDAV connection to: {}", self.config.host_url);
+        println!("Destination directory: {}", self.config.destination_dir);
+        println!("Username: {}", self.config.username);
+
         // Try to create destination directory if it doesn't exist
-        let _ = client.mkcol(&self.config.destination_dir).await;
+        println!("Creating destination directory...");
+        match client.mkcol(&self.config.destination_dir).await {
+            Ok(_) => println!("Directory created or already exists"),
+            Err(e) => println!("Warning: Could not create directory: {}", e),
+        }
 
         // Test by uploading and downloading a small test file
         let test_filename = format!("{}/test-connection.txt", self.config.destination_dir);
         let test_content = b"WebDAV connection test";
 
+        println!("Uploading test file to: {}", test_filename);
         // Upload test file
         client.put(&test_filename, test_content.to_vec()).await?;
 
+        println!("Downloading test file from: {}", test_filename);
         // Download test file
         let response = client.get(&test_filename).await?;
         let downloaded_content = response.bytes().await
             .map_err(|e| WebDAVError::HttpError(e.to_string()))?;
 
+        println!("Cleaning up test file...");
         // Clean up test file
         let _ = client.delete(&test_filename).await;
 
-        Ok(*downloaded_content == *test_content)
+        let success = *downloaded_content == *test_content;
+        println!("Test completed. Success: {}", success);
+
+        Ok(success)
     }
 
     pub async fn upload_clipboard_data(&self, data: &[u8]) -> WebDAVResult<()> {
@@ -162,9 +176,18 @@ impl WebDAVState {
 // Tauri commands
 #[tauri::command]
 pub async fn webdav_test_connection(config: WebDAVConfig) -> Result<bool, String> {
+    println!("WebDAV test connection command received config: {:?}", config);
     let client = WebDAVClient::new(config);
-    client.test_connection().await
-        .map_err(|e| e.to_string())
+    match client.test_connection().await {
+        Ok(success) => {
+            println!("WebDAV test connection result: {}", success);
+            Ok(success)
+        }
+        Err(e) => {
+            println!("WebDAV test connection error: {:?}", e);
+            Err(e.to_string())
+        }
+    }
 }
 
 #[tauri::command]
