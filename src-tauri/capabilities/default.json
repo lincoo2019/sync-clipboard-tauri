@@ -13,7 +13,6 @@
     "clipboard-manager:allow-write-text",
     "clipboard-manager:allow-read-text",
     "dialog:default",
-    "quicktile:default",
     "process:default",
     "fs:default",
     "toast:default",

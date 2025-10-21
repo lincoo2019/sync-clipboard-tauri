@@ -7,7 +7,19 @@
       "Bash(cargo tauri build:*)",
       "Bash(npm run tauri:*)",
       "Bash(npm run)",
-      "Bash(npx @tauri-apps/cli@latest:*)"
+      "Bash(npx @tauri-apps/cli@latest:*)",
+      "Bash(cargo build:*)",
+      "Bash(brew install:*)",
+      "Bash(HOMEBREW_NO_AUTO_UPDATE=1 brew install:*)",
+      "Read(//opt/homebrew/Cellar/**)",
+      "Read(//Users/**)",
+      "Bash(export:*)",
+      "Bash(timeout:*)",
+      "Bash(npm run:*)",
+      "Bash(./gradlew:*)",
+      "Bash(adb uninstall:*)",
+      "Bash(/Users/lincoo/Library/Android/sdk/platform-tools/adb uninstall:*)",
+      "Bash(/Users/lincoo/Library/Android/sdk/platform-tools/adb:*)"
     ],
     "deny": [],
     "ask": []

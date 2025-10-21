@@ -31,12 +31,18 @@ android {
             val keystoreProperties = Properties()
             if (keystorePropertiesFile.exists()) {
                 keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-            }
 
-            keyAlias = keystoreProperties["keyAlias"] as String
-            keyPassword = keystoreProperties["password"] as String
-            storeFile = file(keystoreProperties["storeFile"] as String)
-            storePassword = keystoreProperties["password"] as String
+                keyAlias = keystoreProperties["keyAlias"] as? String ?: ""
+                keyPassword = keystoreProperties["password"] as? String ?: ""
+                storeFile = keystoreProperties["storeFile"]?.let { file(it as String) } ?: file("../keystore/release.keystore")
+                storePassword = keystoreProperties["password"] as? String ?: ""
+            } else {
+                // Default values for debug builds when keystore.properties doesn't exist
+                keyAlias = "debug"
+                keyPassword = "debug"
+                storeFile = file("../keystore/debug.keystore")
+                storePassword = "debug"
+            }
         }
     }
     buildTypes {
